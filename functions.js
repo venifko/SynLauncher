@@ -4,6 +4,23 @@ const WebTorrent = require('webtorrent');
 const extract = require('extract-zip');
 const constants = require('./constants');
 
+/** Returns GitHub API headers, including auth token if available (config or env var) */
+function getGitHubHeaders() {
+  const headers = {
+    'User-Agent': 'SynastriaLauncher',
+    'Accept': 'application/vnd.github.v3+json'
+  };
+  let token = process.env.GITHUB_TOKEN || null;
+  if (!token) {
+    try {
+      const config = JSON.parse(fs.readFileSync(constants.CONFIG_FILE));
+      if (config && config.githubToken) token = config.githubToken;
+    } catch (e) { /* no config yet */ }
+  }
+  if (token) headers['Authorization'] = 'token ' + token;
+  return headers;
+}
+
 function configExists() {
   return fs.existsSync(constants.CONFIG_FILE);
 }
@@ -146,39 +163,43 @@ function removeAddonConfig(config, addon) {
 }
 
 /** Fetches the latest commit hash from Github for a repo (returns Promise<string>) */
-async function fetchLatestCommitHash(repo) {
+async function fetchLatestCommitHash(repo, redirects = 3) {
   const https = require('https');
   // Remove trailing .git if present
   let cleanRepo = repo.replace(/\.git$/, '');
   const apiUrl = cleanRepo.replace('https://github.com/', 'https://api.github.com/repos/') + '/commits';
+  const ghHeaders = getGitHubHeaders();
   return new Promise((resolve, reject) => {
-    https.get(apiUrl, {
-      headers: {
-        'User-Agent': 'SynastriaLauncher',
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    }, res => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        // Log 403/429 status codes for rate limiting
-        if (res.statusCode === 403) {
-          console.error(`[GitHub API] 403 Forbidden (rate limited) for repo: ${repo}`);
-        } else if (res.statusCode === 429) {
-          console.error(`[GitHub API] 429 Too Many Requests for repo: ${repo}`);
+    function doRequest(url, remaining) {
+      https.get(url, { headers: ghHeaders }, res => {
+        // Follow redirects (e.g. renamed repos return 301)
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && remaining > 0) {
+          res.resume(); // drain response
+          doRequest(res.headers.location, remaining - 1);
+          return;
         }
-        try {
-          const commits = JSON.parse(data);
-          if (Array.isArray(commits) && commits.length > 0) {
-            resolve(commits[0].sha);
-          } else {
-            reject(new Error('No commits found'));
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 403) {
+            console.error(`[GitHub API] 403 Forbidden (rate limited) for repo: ${repo}`);
+          } else if (res.statusCode === 429) {
+            console.error(`[GitHub API] 429 Too Many Requests for repo: ${repo}`);
           }
-        } catch (err) {
-          reject(err);
-        }
-      });
-    }).on('error', reject);
+          try {
+            const commits = JSON.parse(data);
+            if (Array.isArray(commits) && commits.length > 0) {
+              resolve(commits[0].sha);
+            } else {
+              reject(new Error('No commits found'));
+            }
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }).on('error', reject);
+    }
+    doRequest(apiUrl, redirects);
   });
 }
 
@@ -225,7 +246,7 @@ async function downloadAndExtractAddon(addon, clientDir) {
               body
             ].join('\n');
             console.error(log);
-            require('fs').writeFileSync('addon_download_error.log', log);
+            require('fs').writeFileSync(require('path').join(require('./constants').CONFIG_DIR, 'addon_download_error.log'), log);
             reject(new Error(`Failed to download zip: ${url} (HTTP ${res.statusCode})`));
           });
           return;
@@ -250,25 +271,29 @@ async function downloadAndExtractAddon(addon, clientDir) {
       const https = require('https');
       const repoUrl = addon.repo.replace(/\.git$/, '');
       const apiUrl = repoUrl.replace('https://github.com/', 'https://api.github.com/repos/');
-      defaultBranch = await new Promise((resolve, reject) => {
-        https.get(apiUrl, {
-          headers: {
-            'User-Agent': 'SynastriaLauncher',
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }, res => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              if (json.default_branch) resolve(json.default_branch);
-              else resolve('main');
-            } catch (e) {
-              resolve('main');
+      const ghHeaders = getGitHubHeaders();
+      defaultBranch = await new Promise((resolve) => {
+        function doRequest(url, remaining) {
+          https.get(url, { headers: ghHeaders }, res => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && remaining > 0) {
+              res.resume();
+              doRequest(res.headers.location, remaining - 1);
+              return;
             }
-          });
-        }).on('error', () => resolve('main'));
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                if (json.default_branch) resolve(json.default_branch);
+                else resolve('main');
+              } catch (e) {
+                resolve('main');
+              }
+            });
+          }).on('error', () => resolve('main'));
+        }
+        doRequest(apiUrl, 3);
       });
     } catch (e) { /* fallback to main */ }
   }
@@ -374,26 +399,29 @@ function uninstallAddon(addon, clientDir) {
   }
 }
 
-/** Checks all curated addons and updates if hashes differ */
-async function autoUpdateAddons(config, clientDir, curatedAddons) {
+/** Checks all curated addons and updates if hashes differ.
+ *  @param {function} [onProgress] - Optional callback(current, total, addonName, action) */
+async function autoUpdateAddons(config, clientDir, curatedAddons, onProgress) {
   // Only check installed addons
   const installedAddons = Array.isArray(config.addons) ? config.addons : [];
-  for (const addon of curatedAddons) {
+  const toCheck = curatedAddons.filter(a => installedAddons.some(i => i.name === a.name));
+  const total = toCheck.length;
+  let current = 0;
+  for (const addon of toCheck) {
     const entry = installedAddons.find(a => a.name === addon.name);
-    if (!entry) continue; // Skip if not installed
+    current++;
+    if (onProgress) onProgress(current, total, addon.name, 'checking');
     try {
       console.log(`[AddonUpdate] Checking addon: ${addon.name}`);
       const latestHash = await fetchLatestCommitHash(addon.repo);
       console.log(`[AddonUpdate] Latest hash from GitHub for '${addon.name}': ${latestHash}`);
-      const entry = getAddonConfigEntry(config, addon);
-      if (!entry) {
-        console.log(`[AddonUpdate] '${addon.name}' not installed. Installing...`);
-      } else if (entry.hash !== latestHash) {
+      if (entry.hash !== latestHash) {
         console.log(`[AddonUpdate] Hash mismatch for '${addon.name}': config=${entry.hash}, github=${latestHash}`);
       } else {
         console.log(`[AddonUpdate] '${addon.name}' is up to date.`);
       }
-      if (!entry || entry.hash !== latestHash) {
+      if (entry.hash !== latestHash) {
+        if (onProgress) onProgress(current, total, addon.name, 'updating');
         // Not installed or hash mismatch: always uninstall and re-install
         try {
           console.log(`[AddonUpdate] Uninstalling '${addon.name}' if present...`);
@@ -432,6 +460,7 @@ module.exports = {
   ensureConfigDir,
   saveConfig,
   loadConfig,
+  getGitHubHeaders,
   downloadClientTorrent,
   isValidWoWDir,
   extractClient,

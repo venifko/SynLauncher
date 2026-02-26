@@ -329,245 +329,263 @@ function showPlayButton(clientDir) {
 
   let addonsPanel = null;
   addonsBtn.onclick = async () => {
-    if (addonsPanel && addonsPanel.parentNode) {
-      // Instead of removing the panel, just refresh its contents
-      // Remove all children except for the panel container itself
-      while (addonsPanel.firstChild) {
-        addonsPanel.removeChild(addonsPanel.firstChild);
-      }
-      // Continue to repopulate the panel below (do not return)
-    }
     // Remove any existing panel
     if (addonsPanel) addonsPanel.remove();
-    addonsPanel = document.createElement('div');
-    addonsPanel.style.position = 'fixed';
-    addonsPanel.style.top = '0';
-    addonsPanel.style.left = '0';
-    addonsPanel.style.width = '100vw';
-    addonsPanel.style.height = '100vh';
-    addonsPanel.style.maxWidth = '100vw';
-    addonsPanel.style.maxHeight = '100vh';
-    addonsPanel.style.overflowY = 'auto';
-    addonsPanel.style.margin = '0';
-    addonsPanel.style.paddingTop = '60px'; // leave a little space for header
-    addonsPanel.style.boxSizing = 'border-box';
-    // Modern custom scrollbar for the addons panel
-    const addonsScrollbarStyle = document.createElement('style');
-    addonsScrollbarStyle.textContent = `
-      .synastria-addons-panel::-webkit-scrollbar {
-        width: 12px;
-        background: #23272e;
-        border-radius: 8px;
-      }
-      .synastria-addons-panel::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #38415a 0%, #23272e 100%);
-        border-radius: 8px;
-        border: 2px solid #23272e;
-      }
-      .synastria-addons-panel::-webkit-scrollbar-thumb:hover {
-        background: #4e5a7a;
-      }
-    `;
-    document.head.appendChild(addonsScrollbarStyle);
-    addonsPanel.classList.add('synastria-addons-panel');
-    addonsPanel.style.background = 'rgba(30,36,48,0.97)';
-    addonsPanel.style.borderRadius = '12px';
-    addonsPanel.style.boxShadow = '0 8px 32px 0 rgba(0,0,0,0.23)';
-    addonsPanel.style.padding = '24px 18px 18px 18px';
-    addonsPanel.style.zIndex = '20001';
-    addonsPanel.style.display = 'flex';
-    addonsPanel.style.flexDirection = 'column';
-    addonsPanel.style.gap = '0px';
 
-    // Addons panel header
+    // Inject styles once
+    if (!document.getElementById('synastria-addons-css')) {
+      const css = document.createElement('style');
+      css.id = 'synastria-addons-css';
+      css.textContent = `
+        .sa-panel { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(24,28,38,0.98); z-index:20001; display:flex; flex-direction:column; font-family:Segoe UI,Arial,sans-serif; }
+        .sa-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px 10px 20px; flex-shrink:0; }
+        .sa-header h2 { margin:0; font-size:1.15rem; color:#fff; font-weight:600; letter-spacing:0.3px; }
+        .sa-status { padding:0 20px 8px 20px; flex-shrink:0; }
+        .sa-status-bar { height:3px; background:#1a1d24; border-radius:2px; overflow:hidden; }
+        .sa-status-fill { height:100%; width:0%; background:#1e90ff; border-radius:2px; transition:width 0.3s; }
+        .sa-status-text { font-size:0.75rem; color:#8899aa; margin-top:3px; min-height:14px; }
+        .sa-table-head { display:flex; padding:0 20px; flex-shrink:0; border-bottom:1px solid #2a2f3a; }
+        .sa-table-head > div { padding:6px 6px; font-size:0.7rem; color:#667; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+        .sa-list { flex:1; overflow-y:auto; padding:0 12px 12px 12px; }
+        .sa-list::-webkit-scrollbar { width:8px; }
+        .sa-list::-webkit-scrollbar-thumb { background:#2e3540; border-radius:4px; }
+        .sa-list::-webkit-scrollbar-thumb:hover { background:#4e5a7a; }
+        .sa-list::-webkit-scrollbar-track { background:transparent; }
+        .sa-row { display:flex; align-items:center; padding:5px 8px; border-radius:4px; margin:1px 0; cursor:default; -webkit-app-region:no-drag; }
+        .sa-row:hover { background:rgba(50,56,75,0.6) !important; }
+        .sa-row .sa-name { flex:0 0 170px; font-weight:600; font-size:0.82rem; color:#e8ecf2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:8px; }
+        .sa-row .sa-desc { flex:1; font-size:0.75rem; color:#8899aa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:8px; }
+        .sa-row .sa-author { flex:0 0 75px; font-size:0.75rem; color:#6ab0e4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:8px; }
+        .sa-row .sa-date { flex:0 0 85px; font-size:0.72rem; text-align:right; padding-right:8px; white-space:nowrap; }
+        .sa-row .sa-date.installed { color:#4eca6a; }
+        .sa-row .sa-date.not-installed { color:#556; }
+        .sa-row .sa-actions { flex:0 0 80px; text-align:right; }
+        .sa-btn { border:none; border-radius:3px; padding:3px 12px; font-size:0.75rem; font-weight:600; cursor:pointer; transition:background 0.15s, opacity 0.15s; -webkit-app-region:no-drag; }
+        .sa-btn:disabled { opacity:0.5; cursor:wait; }
+        .sa-btn-install { background:#17406d; color:#fff; }
+        .sa-btn-install:hover:not(:disabled) { background:#1e5a9a; }
+        .sa-btn-uninstall { background:#6b2020; color:#ddd; }
+        .sa-btn-uninstall:hover:not(:disabled) { background:#8b2a2a; }
+        .sa-btn-close { background:#2a2f3a; color:#ccc; border:none; border-radius:3px; padding:5px 28px; font-size:0.85rem; cursor:pointer; -webkit-app-region:no-drag; }
+        .sa-btn-close:hover { background:#3a4050; }
+        .sa-footer { display:flex; justify-content:center; padding:10px 20px 14px 20px; flex-shrink:0; border-top:1px solid #2a2f3a; }
+        .sa-count { font-size:0.7rem; color:#556; margin-left:8px; }
+      `;
+      document.head.appendChild(css);
+    }
+
+    addonsPanel = document.createElement('div');
+    addonsPanel.className = 'sa-panel';
+
+    // Header
     const header = document.createElement('div');
-    header.textContent = '[AI] Warning: Addons tagged with [AI] have a higher likelyhood of memory leaks!';
-    header.style.fontSize = '1.3rem';
-    header.style.fontWeight = '600';
-    header.style.color = '#fff';
-    header.style.marginBottom = '18px';
-    header.style.letterSpacing = '0.5px';
+    header.className = 'sa-header';
+    const title = document.createElement('h2');
+    title.textContent = 'Manage Addons';
+    header.appendChild(title);
+    const countLabel = document.createElement('span');
+    countLabel.className = 'sa-count';
+    header.appendChild(countLabel);
     addonsPanel.appendChild(header);
 
+    // AI warning
+    const aiWarn = document.createElement('div');
+    aiWarn.textContent = '[AI] Warning: Addons tagged with [AI] have a higher likelihood of memory leaks!';
+    aiWarn.style.cssText = 'padding:4px 20px 8px;font-size:0.72rem;color:#e8a33a;flex-shrink:0;';
+    addonsPanel.appendChild(aiWarn);
+
+    // Status/progress area
+    const statusArea = document.createElement('div');
+    statusArea.className = 'sa-status';
+    const statusBar = document.createElement('div');
+    statusBar.className = 'sa-status-bar';
+    const statusFill = document.createElement('div');
+    statusFill.className = 'sa-status-fill';
+    statusBar.appendChild(statusFill);
+    statusArea.appendChild(statusBar);
+    const statusText = document.createElement('div');
+    statusText.className = 'sa-status-text';
+    statusArea.appendChild(statusText);
+    addonsPanel.appendChild(statusArea);
+
+    function setProgress(pct, msg) {
+      statusFill.style.width = pct + '%';
+      statusText.textContent = msg || '';
+    }
+
+    // Column headers
+    const colHead = document.createElement('div');
+    colHead.className = 'sa-table-head';
+    [['170px','Name'],['1','Description'],['75px','Author'],['85px','Updated'],['80px','']].forEach(([w,label]) => {
+      const col = document.createElement('div');
+      col.textContent = label;
+      col.style.flex = w.includes('px') ? '0 0 '+w : w;
+      colHead.appendChild(col);
+    });
+    addonsPanel.appendChild(colHead);
+
+    // Scrollable addon list
+    const list = document.createElement('div');
+    list.className = 'sa-list';
+    addonsPanel.appendChild(list);
+
+    // Footer with close button
+    const footer = document.createElement('div');
+    footer.className = 'sa-footer';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'sa-btn-close';
+    closeBtn.textContent = 'Close';
+    closeBtn.onclick = () => { addonsPanel.remove(); addonsPanel = null; };
+    footer.appendChild(closeBtn);
+    addonsPanel.appendChild(footer);
+
+    document.body.appendChild(addonsPanel);
+
     // Fetch list
+    setProgress(0, 'Loading addon list...');
     const res = await ipcRenderer.invoke('get-addons-list');
     if (!res.success) {
-      showModal('Failed to load addons: ' + res.message);
+      setProgress(0, 'Failed to load addons: ' + res.message);
       return;
     }
-    const addons = res.addons;
-    // Zebra-striped list
+    // Sort: installed first, then alphabetically within each group
+    const addons = res.addons.sort((a, b) => {
+      if (a.installed && !b.installed) return -1;
+      if (!a.installed && b.installed) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    const installedCount = addons.filter(a => a.installed).length;
+    countLabel.textContent = installedCount + ' / ' + addons.length + ' installed';
+    setProgress(100, addons.length + ' addons loaded');
+    setTimeout(() => { statusFill.style.width = '0%'; statusText.textContent = ''; }, 1500);
+
+    function formatDate(ds) {
+      const d = new Date(ds);
+      return d.toLocaleString('en-US', { month:'short' }) + ' ' + d.getDate() + ' ' + d.getFullYear();
+    }
+
     addons.forEach((addon, idx) => {
       const row = document.createElement('div');
-      row.style.background = idx % 2 === 0 ? 'rgba(40,44,60,0.92)' : 'rgba(32,36,48,0.87)';
-      row.style.display = 'flex';
-      row.style.flexDirection = 'row';
-      row.style.alignItems = 'center';
-      row.style.padding = '4px 10px'; // reduced top-bottom padding
-      row.style.borderRadius = '7px';
-      row.style.marginBottom = '2px';
-      row.style.fontFamily = 'Montserrat, Arial, sans-serif';
-      row.style.fontSize = '0.95rem'; // globally smaller font
-      row.style.transition = 'background 0.13s';
+      row.className = 'sa-row';
+      row.style.background = idx % 2 === 0 ? 'rgba(36,40,52,0.7)' : 'transparent';
+      row.title = addon.description;
 
-      // Name
       const name = document.createElement('div');
+      name.className = 'sa-name';
       name.textContent = addon.name;
-      name.style.fontWeight = '600';
-      name.style.fontSize = '0.99rem';
-      name.style.marginRight = '14px';
-      name.style.color = '#fff';
-      name.style.flex = '0 0 180px';
-      name.style.marginRight = '18px';
       row.appendChild(name);
 
-      // Description
       const desc = document.createElement('div');
+      desc.className = 'sa-desc';
       desc.textContent = addon.description;
-      desc.style.fontSize = '0.93rem';
-      desc.style.color = '#b6c1dc';
-      desc.style.flex = '1 1 auto';
-      desc.style.marginRight = '14px';
       row.appendChild(desc);
 
-      // Author
       const author = document.createElement('div');
-      author.textContent = addon.Author || addon.author || '—';
-      author.style.fontSize = '0.93rem';
-      author.style.color = '#8fd4ff';
-      author.style.flex = '0 0 100px';
-      author.style.marginRight = '14px';
-      author.style.textAlign = 'left';
+      author.className = 'sa-author';
+      author.textContent = addon.Author || addon.author || '';
       row.appendChild(author);
 
-      // Last updated
-      // Helper for formatting dates as 'Apr 1 2025'
-      function formatAddonDate(dateString) {
-        const date = new Date(dateString);
-        const month = date.toLocaleString('en-US', { month: 'short' });
-        return `${month} ${date.getDate()} ${date.getFullYear()}`;
-      }
-      const lastUpdated = document.createElement('div');
-      lastUpdated.innerHTML = addon.lastUpdated ? `Updated:<br>${formatAddonDate(addon.lastUpdated)}` : 'Not installed';
-      lastUpdated.style.fontSize = '0.92rem';
-      lastUpdated.style.color = addon.installed ? '#5ad17a' : '#c5c5c5';
-      lastUpdated.style.marginRight = '14px';
-      lastUpdated.style.flex = '0 0 120px';
-      lastUpdated.style.textAlign = 'right';
-      row.appendChild(lastUpdated);
+      const date = document.createElement('div');
+      date.className = 'sa-date ' + (addon.installed ? 'installed' : 'not-installed');
+      date.textContent = addon.lastUpdated ? formatDate(addon.lastUpdated) : '—';
+      row.appendChild(date);
 
-      // Actions (Install/Uninstall)
       const actions = document.createElement('div');
-      actions.style.display = 'flex';
-      actions.style.flexDirection = 'row';
-      actions.style.alignItems = 'center';
-      actions.style.gap = '10px';
-      actions.style.flex = '0 0 auto';
+      actions.className = 'sa-actions';
 
-      // Install/Uninstall/Update buttons
       if (!addon.installed) {
-        const installBtn = document.createElement('button');
-        installBtn.textContent = 'Install';
-        installBtn.style.background = '#17406d';
-        installBtn.style['-webkit-app-region'] = 'no-drag';
-        installBtn.style.color = '#fff';
-        installBtn.style.border = 'none';
-        installBtn.style.borderRadius = '4px';
-        installBtn.style.padding = '6px 18px';
-        installBtn.style.fontSize = '1rem';
-        installBtn.style.cursor = 'pointer';
-        installBtn.onmouseover = () => installBtn.style.background = '#0d2238';
-        installBtn.onmouseleave = () => installBtn.style.background = '#17406d';
-        installBtn.onclick = async (e) => {
+        const btn = document.createElement('button');
+        btn.className = 'sa-btn sa-btn-install';
+        btn.textContent = 'Install';
+        btn.onclick = async (e) => {
           e.stopPropagation();
-          actions.style.opacity = '0.6';
-          installBtn.disabled = true;
+          btn.disabled = true;
+          btn.textContent = 'Installing...';
+          setProgress(30, 'Installing ' + addon.name + '...');
           const resp = await ipcRenderer.invoke('install-addon', addon, clientDir);
-          actions.style.opacity = '';
-          installBtn.disabled = false;
           if (!resp.success) {
-            showModal('Install failed: ' + resp.message);
+            setProgress(0, 'Failed: ' + resp.message);
+            btn.textContent = 'Install';
+            btn.disabled = false;
           } else {
-            // Refresh the panel in place
-            addonsBtn.onclick();
+            setProgress(100, addon.name + ' installed');
+            btn.textContent = 'Uninstall';
+            btn.className = 'sa-btn sa-btn-uninstall';
+            btn.disabled = false;
+            date.textContent = formatDate(resp.lastUpdated);
+            date.className = 'sa-date installed';
+            addon.installed = true;
+            addon.lastUpdated = resp.lastUpdated;
+            const ic = addons.filter(a => a.installed).length;
+            countLabel.textContent = ic + ' / ' + addons.length + ' installed';
+            // Rebind as uninstall
+            btn.onclick = makeUninstallHandler(btn, addon, date);
           }
         };
-        actions.appendChild(installBtn);
+        actions.appendChild(btn);
       } else {
-        // Only show uninstall button now that auto-update is always handled
-        const uninstallBtn = document.createElement('button');
-        uninstallBtn.textContent = 'Uninstall';
-        uninstallBtn.style.background = '#a62828';
-        uninstallBtn.style['-webkit-app-region'] = 'no-drag';
-        uninstallBtn.style.color = '#fff';
-        uninstallBtn.style.border = 'none';
-        uninstallBtn.style.borderRadius = '4px';
-        uninstallBtn.style.padding = '6px 18px';
-        uninstallBtn.style.fontSize = '1rem';
-        uninstallBtn.style.cursor = 'pointer';
-        uninstallBtn.onmouseover = () => uninstallBtn.style.background = '#6d1717';
-        uninstallBtn.onmouseleave = () => uninstallBtn.style.background = '#a62828';
-        uninstallBtn.onclick = async (e) => {
-          e.stopPropagation();
-          actions.style.opacity = '0.6';
-          uninstallBtn.disabled = true;
-          const resp = await ipcRenderer.invoke('uninstall-addon', addon, clientDir);
-          actions.style.opacity = '';
-          uninstallBtn.disabled = false;
-          if (!resp.success) {
-            showModal('Uninstall failed: ' + resp.message);
-          } else {
-            // Refresh the panel in place
-            addonsBtn.onclick();
-          }
-        };
-        actions.appendChild(uninstallBtn);
+        const btn = document.createElement('button');
+        btn.className = 'sa-btn sa-btn-uninstall';
+        btn.textContent = 'Uninstall';
+        btn.onclick = makeUninstallHandler(btn, addon, date);
+        actions.appendChild(btn);
       }
 
       row.appendChild(actions);
-      addonsPanel.appendChild(row);
+      list.appendChild(row);
     });
 
-    // Close button
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.background = '#23272e';
-    closeBtn.style['-webkit-app-region'] = 'no-drag';
-    closeBtn.style.margin = '18px auto 0 auto';
-    closeBtn.style.display = 'block';
-    closeBtn.style.color = '#fff';
-    closeBtn.style.border = 'none';
-    closeBtn.style.borderRadius = '4px';
-    closeBtn.style.padding = '8px 38px';
-    closeBtn.style.fontSize = '1.08rem';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.onmouseover = () => closeBtn.style.background = '#111';
-    closeBtn.onmouseleave = () => closeBtn.style.background = '#222';
-    closeBtn.onclick = () => {
-      addonsPanel.remove();
-      addonsPanel = null;
-    };
-    addonsPanel.appendChild(closeBtn);
-
-    document.body.appendChild(addonsPanel);
+    function makeUninstallHandler(btn, addon, dateEl) {
+      return async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = 'Removing...';
+        setProgress(30, 'Removing ' + addon.name + '...');
+        const resp = await ipcRenderer.invoke('uninstall-addon', addon, clientDir);
+        if (!resp.success) {
+          setProgress(0, 'Failed: ' + resp.message);
+          btn.textContent = 'Uninstall';
+          btn.disabled = false;
+        } else {
+          setProgress(100, addon.name + ' removed');
+          btn.textContent = 'Install';
+          btn.className = 'sa-btn sa-btn-install';
+          btn.disabled = false;
+          dateEl.textContent = '\u2014';
+          dateEl.className = 'sa-date not-installed';
+          addon.installed = false;
+          addon.lastUpdated = null;
+          const ic = addons.filter(a => a.installed).length;
+          countLabel.textContent = ic + ' / ' + addons.length + ' installed';
+          // Rebind as install
+          btn.onclick = async (e2) => {
+            e2.stopPropagation();
+            btn.disabled = true;
+            btn.textContent = 'Installing...';
+            setProgress(30, 'Installing ' + addon.name + '...');
+            const resp2 = await ipcRenderer.invoke('install-addon', addon, clientDir);
+            if (!resp2.success) {
+              setProgress(0, 'Failed: ' + resp2.message);
+              btn.textContent = 'Install';
+              btn.disabled = false;
+            } else {
+              setProgress(100, addon.name + ' installed');
+              btn.textContent = 'Uninstall';
+              btn.className = 'sa-btn sa-btn-uninstall';
+              btn.disabled = false;
+              dateEl.textContent = formatDate(resp2.lastUpdated);
+              dateEl.className = 'sa-date installed';
+              addon.installed = true;
+              addon.lastUpdated = resp2.lastUpdated;
+              const ic2 = addons.filter(a => a.installed).length;
+              countLabel.textContent = ic2 + ' / ' + addons.length + ' installed';
+              btn.onclick = makeUninstallHandler(btn, addon, dateEl);
+            }
+          };
+        }
+      };
+    }
   };
-  document.body.appendChild(addonsBtn);
-sBtn.style.margin = '18px auto 0 auto';
-  addonsBtn.style.display = 'block';
-  addonsBtn.style.background = '#23272e';
-  addonsBtn.style.color = '#fff';
-  addonsBtn.style.border = 'none';
-  addonsBtn.style.borderRadius = '4px';
-  addonsBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.13)';
-  addonsBtn.style.cursor = 'pointer';
-  addonsBtn.style.fontWeight = 'bold';
-  addonsBtn.style.letterSpacing = '0.05em';
-  addonsBtn.style.transition = 'background 0.2s';
-  addonsBtn.style.zIndex = '1';
-  addonsBtn.style['-webkit-app-region'] = 'no-drag';
-  addonsBtn.onmouseover = () => addonsBtn.style.background = '#353a40';
-  addonsBtn.onmouseleave = () => addonsBtn.style.background = '#23272e';
-  // No function assigned for now
   document.body.appendChild(addonsBtn);
 }
 
@@ -619,8 +637,31 @@ sBtn.style.margin = '18px auto 0 auto';
     if (config && config.clientDir) {
       const isValid = await ipcRenderer.invoke('validate-wow-dir', config.clientDir);
       if (isValid) {
-        showStatus('WoW client detected. Checking for addon updates...');
+        // Hide the choose/download buttons during addon update
+        mainActions.style.display = 'none';
+        showStatus('Checking for addon updates...');
+        progressBar.style.display = 'block';
+        progressBar.removeAttribute('value'); // indeterminate initially
+        progressBar.classList.add('indeterminate');
+
+        // Listen for progress events from main process
+        const progressHandler = (event, data) => {
+          const pct = Math.round((data.current / data.total) * 100);
+          progressBar.classList.remove('indeterminate');
+          progressBar.value = pct;
+          if (data.action === 'updating') {
+            showStatus('Updating ' + data.name + '... (' + data.current + '/' + data.total + ')');
+          } else {
+            showStatus('Checking ' + data.name + '... (' + data.current + '/' + data.total + ')');
+          }
+        };
+        ipcRenderer.on('addon-update-progress', progressHandler);
+
         await ipcRenderer.invoke('auto-update-addons', config.clientDir);
+
+        ipcRenderer.removeListener('addon-update-progress', progressHandler);
+        progressBar.style.display = 'none';
+        progressBar.value = 0;
         // Reload config to get updated hash and state
         config = await ipcRenderer.invoke('load-config');
         // Now check for wowext.exe and show play button if present

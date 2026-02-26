@@ -66,10 +66,7 @@ ipcMain.handle('check-for-launcher-update', async () => {
     const repoName = 'SynLauncher';
     const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
     const resp = await axios.get(apiUrl, {
-      headers: {
-        'User-Agent': 'SynastriaLauncher',
-        'Accept': 'application/vnd.github.v3+json'
-      }
+      headers: functions.getGitHubHeaders()
     });
     const latest = resp.data;
     const latestVersion = latest.tag_name.startsWith('v') ? latest.tag_name.substring(1) : latest.tag_name;
@@ -265,7 +262,14 @@ ipcMain.handle('auto-update-addons', async (event, clientDir) => {
       console.error('Failed to fetch curated addons list:', fetchErr);
       return { success: false, message: 'Could not fetch curated addons list.' };
     }
-    await functions.autoUpdateAddons(config, clientDir, curated);
+    // Send progress events to renderer
+    const win = BrowserWindow.getAllWindows()[0];
+    const onProgress = (current, total, name, action) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('addon-update-progress', { current, total, name, action });
+      }
+    };
+    await functions.autoUpdateAddons(config, clientDir, curated, onProgress);
     functions.saveConfig(config);
     return { success: true };
   } catch (err) {
